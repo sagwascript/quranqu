@@ -291,10 +291,10 @@ function shuffleVerses(verses, difficulty) {
     let iter;
     while (iter <= maxTries) {
       const diff = shuffledOrders.reduce((acc, order, idx) => {
-        return (acc += order - ranges[idx]);
+        return (acc += order - ranges[idx] === 0 ? 1 : 0);
       }, 0);
       // if properly mixed
-      if (diff >= 3) break;
+      if (diff <= 3) break;
       shuffledOrders = shuffle(ranges);
       iter++;
     }
