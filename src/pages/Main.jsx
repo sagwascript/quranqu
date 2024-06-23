@@ -33,13 +33,26 @@ function Main() {
   const storeAnswer = (answerSlotIdx, answer, selectedAnswer) => {
     if (!answer && !selectedAnswer) return;
     if (answer && !selectedAnswer) return removeAnswer(answerSlotIdx, answer);
-    setAnswers((prev) =>
-      prev.map((answer, idx) =>
-        idx === answerSlotIdx ? selectedAnswer : answer
-      )
-    );
-    setVerses((prev) => prev.filter((verse) => verse.id !== selectedAnswer.id));
-    setSelectedVerse(null);
+    if (answer && selectedAnswer) {
+      setAnswers((prev) =>
+        prev.map((answer, idx) =>
+          idx !== answerSlotIdx ? answer : selectedAnswer
+        )
+      );
+      setVerses((prev) =>
+        prev.map((verse) => (verse.id !== selectedAnswer.id ? verse : answer))
+      );
+    } else {
+      setAnswers((prev) =>
+        prev.map((answer, idx) =>
+          idx === answerSlotIdx ? selectedAnswer : answer
+        )
+      );
+      setVerses((prev) =>
+        prev.filter((verse) => verse.id !== selectedAnswer.id)
+      );
+      setSelectedVerse(null);
+    }
     // Change score on correctly answered
     if (answerSlotIdx + 1 === selectedAnswer.id) {
       setScores((prev) => prev + 10);
