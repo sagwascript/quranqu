@@ -13,6 +13,12 @@ import DialogUsername from "../components/DialogUsername";
 import DialogDifficulty from "../components/DialogDifficulty";
 import Badge from "../components/Badge";
 
+const SCORE_INCREASE = Object.freeze({
+  easy: 10,
+  medium: 20,
+  hard: 30,
+});
+
 function Main() {
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState("sagwascript");
@@ -55,7 +61,9 @@ function Main() {
     }
     // Change score on correctly answered
     if (answerSlotIdx + 1 === selectedAnswer.id) {
-      setScores((prev) => prev + 10);
+      setScores((prev) => prev + SCORE_INCREASE[difficulty]);
+    } else {
+      setScores((prev) => prev - SCORE_INCREASE[difficulty] / 2);
     }
   };
   const removeAnswer = (answerSlotIdx, selectedAnswer) => {
