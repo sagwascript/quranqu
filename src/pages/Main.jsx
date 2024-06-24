@@ -306,8 +306,10 @@ function shuffleVerses(verses, difficulty) {
       const diff = shuffledOrders.reduce((acc, order, idx) => {
         return (acc += order - ranges[idx] === 0 ? 1 : 0);
       }, 0);
-      // if properly mixed
-      if (diff <= 3) break;
+      let maxSameIndex = 0;
+      if (totalVerses < 5) maxSameIndex = 2;
+      else maxSameIndex = Math.round((totalVerses * 1) / 3);
+      if (diff < maxSameIndex) break;
       shuffledOrders = shuffle(ranges);
       iter++;
     }
