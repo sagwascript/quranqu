@@ -289,7 +289,7 @@ function shuffleVerses(verses, difficulty) {
       .map((_, idx) => (idx % 2 === 0 ? verses[idx] : null));
   } else if (difficulty === "medium") {
     // create ranges but remove the first index
-    const ranges = range(0, totalVerses).slice(0);
+    const ranges = range(0, totalVerses).slice(1);
     const shuffledOrders = shuffle(ranges);
     shuffled = shuffledOrders.map((order) => verses[order]);
     // automatically fill the first answer
