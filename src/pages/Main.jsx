@@ -120,7 +120,7 @@ function Main() {
 
   return (
     <div className="w-screen h-screen bg-[#343a40]">
-      <div className="flex justify-between gap-x-4 w-full h-full p-6">
+      <div className="flex justify-between gap-x-4 w-full h-[calc(100%-30px)] p-6">
         <div className="flex flex-col gap-y-6 w-3/5 h-full">
           {/* Heading */}
           <div className="flex flex-col w-full gap-y-2 bg-dark-100 text-white">
@@ -259,6 +259,30 @@ function Main() {
               })}
           </div>
         </div>
+      </div>
+      <div className="flex items-center gap-x-2 justify-center w-full h-[30px] text-sm bg-[#272f33] text-white">
+        <p>
+          Developed by&nbsp;
+          <a
+            href="https://github.com/sagwascript"
+            target="_blank"
+            rel="noopener noreferer"
+            className="font-medium hover:underline"
+          >
+            Muhammad Riza (sagwascript)
+          </a>
+        </p>
+        <span>|</span>
+        <p>
+          <a
+            href="https://github.com/sagwascript/quranqu"
+            target="_blank"
+            rel="noopener noreferer"
+            className="hover:underline"
+          >
+            Github Repo
+          </a>
+        </p>
       </div>
       <DialogUsername
         isOpen={dialog.username}
