@@ -1,4 +1,24 @@
-# React + Vite
+# Requirements
+
+Install NodeJs + NPM or Yarn
+
+# Install
+
+1. Clone this project
+   ```shell
+   git clone https://github.com/sagwascript/quranqu.git
+   ```
+2. Install dependencies
+   ```shell
+   cd quranqu
+   yarn # npm install
+   ```
+3. Run
+   ```shell
+   yarn dev  # npm run dev
+   ```
+
+# Built using React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
