@@ -63,7 +63,8 @@ function Main() {
     if (answerSlotIdx + 1 === selectedAnswer.id) {
       setScores((prev) => prev + SCORE_INCREASE[difficulty]);
     } else {
-      setScores((prev) => prev - SCORE_INCREASE[difficulty] / 2);
+      // setScores((prev) => prev - SCORE_INCREASE[difficulty] / 2);
+      setScores((prev) => prev - 8);
     }
   };
   const removeAnswer = (answerSlotIdx, selectedAnswer) => {
