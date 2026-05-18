@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Basmalah from "../assets/basmalah.svg?react";
 import clsx from "clsx";
-import { range, shuffle, upperFirst } from "lodash";
+import { chunk, range, shuffle, upperFirst } from "lodash";
 import { Modal } from "antd";
 import {
   ApartmentOutlined,
@@ -19,6 +19,8 @@ const SCORE_INCREASE = Object.freeze({
   hard: 30,
 });
 
+const PAGE_SIZE = 20;
+
 function Main() {
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState("sagwascript");
@@ -26,89 +28,216 @@ function Main() {
   const [scores, setScores] = useState(0);
   const [chapter, setChapter] = useState(114); // Start from An-Nas
   const [data, setData] = useState(null);
-  const [verses, setVerses] = useState([]);
-  const [answers, setAnswers] = useState([]);
+  const [allVerses, setAllVerses] = useState([]); // all verses from API
+  const [currentChunk, setCurrentChunk] = useState(0);
+  const [verses, setVerses] = useState([]); // shuffled pool for current chunk
+  const [answers, setAnswers] = useState([]); // answer slots for current chunk
   const [selectedVerse, setSelectedVerse] = useState(null);
   const [dialog, setDialog] = useState({ username: false, difficulty: false });
-  const openDialog = (name) => {
-    setDialog((prev) => ({ ...prev, [name]: true }));
-  };
-  const closeDialog = (name) => {
+  const [slotAnimations, setSlotAnimations] = useState({});
+  const [dragOverSlot, setDragOverSlot] = useState(null);
+  const [isDraggingOverPool, setIsDraggingOverPool] = useState(false);
+  const dragSource = useRef(null);
+
+  // Derived: list of chunks and the byte-offset of the current chunk
+  const chunks = chunk(allVerses, PAGE_SIZE);
+  const chunkOffset = currentChunk * PAGE_SIZE;
+
+  const openDialog = (name) => setDialog((prev) => ({ ...prev, [name]: true }));
+  const closeDialog = (name) =>
     setDialog((prev) => ({ ...prev, [name]: false }));
+
+  const triggerAnimation = (slotIdx, type) => {
+    if (difficulty === "hard") return;
+    setSlotAnimations((prev) => ({ ...prev, [slotIdx]: type }));
+    setTimeout(() => {
+      setSlotAnimations((prev) => {
+        const next = { ...prev };
+        delete next[slotIdx];
+        return next;
+      });
+    }, 650);
   };
+
   const storeAnswer = (answerSlotIdx, answer, selectedAnswer) => {
     if (!answer && !selectedAnswer) return;
     if (answer && !selectedAnswer) return removeAnswer(answerSlotIdx, answer);
+
+    const isCorrect = selectedAnswer.id === chunkOffset + answerSlotIdx + 1;
+    triggerAnimation(answerSlotIdx, isCorrect ? "correct" : "wrong");
+
     if (answer && selectedAnswer) {
       setAnswers((prev) =>
-        prev.map((answer, idx) =>
-          idx !== answerSlotIdx ? answer : selectedAnswer
-        )
+        prev.map((a, idx) => (idx !== answerSlotIdx ? a : selectedAnswer)),
       );
       setVerses((prev) =>
-        prev.map((verse) => (verse.id !== selectedAnswer.id ? verse : answer))
+        prev.map((verse) => (verse.id !== selectedAnswer.id ? verse : answer)),
       );
     } else {
       setAnswers((prev) =>
-        prev.map((answer, idx) =>
-          idx === answerSlotIdx ? selectedAnswer : answer
-        )
+        prev.map((a, idx) => (idx === answerSlotIdx ? selectedAnswer : a)),
       );
       setVerses((prev) =>
-        prev.filter((verse) => verse.id !== selectedAnswer.id)
+        prev.filter((verse) => verse.id !== selectedAnswer.id),
       );
       setSelectedVerse(null);
     }
-    // Change score on correctly answered
-    if (answerSlotIdx + 1 === selectedAnswer.id) {
+
+    if (isCorrect) {
       setScores((prev) => prev + SCORE_INCREASE[difficulty]);
     } else {
-      // setScores((prev) => prev - SCORE_INCREASE[difficulty] / 2);
       setScores((prev) => prev - 8);
     }
   };
+
   const removeAnswer = (answerSlotIdx, selectedAnswer) => {
-    // Correctly answered
-    if (answerSlotIdx + 1 === selectedAnswer.id) {
-      return;
-    }
+    // Correctly answered slots are locked
+    if (selectedAnswer.id === chunkOffset + answerSlotIdx + 1) return;
     setAnswers((prev) =>
       prev.map((answer) =>
-        answer === null || answer.id !== selectedAnswer.id ? answer : null
-      )
+        answer === null || answer.id !== selectedAnswer.id ? answer : null,
+      ),
     );
     setVerses((prev) => [...prev, selectedAnswer]);
   };
+
   const toggleSelectVerse = (selected) => {
-    // Currently selected
     if (selectedVerse?.id === selected.id) setSelectedVerse(null);
     else setSelectedVerse(selected);
   };
 
+  // Move a verse from one answer slot to another (drag-to-swap)
+  const swapSlots = (fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const fromVerse = answers[fromIdx];
+    const toVerse = answers[toIdx];
+
+    setAnswers((prev) =>
+      prev.map((a, idx) => {
+        if (idx === fromIdx) return toVerse;
+        if (idx === toIdx) return fromVerse;
+        return a;
+      }),
+    );
+
+    const isCorrect = fromVerse.id === chunkOffset + toIdx + 1;
+    triggerAnimation(toIdx, isCorrect ? "correct" : "wrong");
+    if (isCorrect) {
+      setScores((prev) => prev + SCORE_INCREASE[difficulty]);
+    } else {
+      setScores((prev) => prev - 8);
+    }
+  };
+
+  // ── Drag & Drop handlers ────────────────────────────────────────────────────
+  const handleDragStart = (verse, fromSlotIdx = null) => {
+    dragSource.current = { verse, fromSlotIdx };
+  };
+
+  const handleSlotDragOver = (e, slotIdx) => {
+    e.preventDefault();
+    setDragOverSlot(slotIdx);
+  };
+
+  const handleSlotDragLeave = () => {
+    setDragOverSlot(null);
+  };
+
+  const handleDropOnSlot = (e, toSlotIdx) => {
+    e.preventDefault();
+    setDragOverSlot(null);
+    if (!dragSource.current) return;
+    const { verse, fromSlotIdx } = dragSource.current;
+    dragSource.current = null;
+    setSelectedVerse(null);
+
+    if (fromSlotIdx !== null) {
+      swapSlots(fromSlotIdx, toSlotIdx);
+    } else {
+      storeAnswer(toSlotIdx, answers[toSlotIdx], verse);
+    }
+  };
+
+  const handlePoolDragOver = (e) => {
+    e.preventDefault();
+    setIsDraggingOverPool(true);
+  };
+
+  const handlePoolDragLeave = () => {
+    setIsDraggingOverPool(false);
+  };
+
+  const handleDropOnPool = (e) => {
+    e.preventDefault();
+    setIsDraggingOverPool(false);
+    if (!dragSource.current) return;
+    const { verse, fromSlotIdx } = dragSource.current;
+    dragSource.current = null;
+    if (fromSlotIdx !== null) removeAnswer(fromSlotIdx, verse);
+  };
+
+  const handleDragEnd = () => {
+    dragSource.current = null;
+    setDragOverSlot(null);
+    setIsDraggingOverPool(false);
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     setLoading(true);
     fetch(
-      `https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/chapters/id/${chapter}.json`
+      `https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/chapters/id/${chapter}.json`,
     )
       .then((response) => response.json())
       .then((data) => {
         const { verses, ...info } = data;
-        const { shuffled, answers } = shuffleVerses(verses, difficulty);
+        const firstChunk = verses.slice(0, PAGE_SIZE);
+        const { shuffled, answers } = shuffleVerses(firstChunk, difficulty);
         setData(info);
+        setAllVerses(verses);
+        setCurrentChunk(0);
         setVerses(shuffled);
         setAnswers(answers);
+        setSlotAnimations({});
         setLoading(false);
       });
   }, [chapter, difficulty]);
 
   useEffect(() => {
-    // Check if all correct
-    if (verses.length === 0 && data) {
+    // Check if all slots in the current chunk are correctly answered
+    if (verses.length === 0 && data && allVerses.length > 0) {
+      const chunkVerses = chunk(allVerses, PAGE_SIZE)[currentChunk];
       const correct = answers.reduce((acc, answer, idx) => {
-        if (answer.id === idx + 1) return (acc += 1);
+        if (answer !== null && answer.id === chunkOffset + idx + 1)
+          return acc + 1;
         return acc;
       }, 0);
-      if (correct === data["total_verses"])
+
+      if (correct !== chunkVerses.length) return;
+
+      const allChunks = chunk(allVerses, PAGE_SIZE);
+      const hasNextChunk = currentChunk + 1 < allChunks.length;
+
+      if (hasNextChunk) {
+        Modal.success({
+          title: `Section ${currentChunk + 1} of ${allChunks.length} complete!`,
+          content: `Verses ${chunkOffset + 1}–${chunkOffset + chunkVerses.length} done. Keep going!`,
+          okText: `Continue to section ${currentChunk + 2}`,
+          onOk: () => {
+            const nextIdx = currentChunk + 1;
+            const nextVerses = allChunks[nextIdx];
+            const { shuffled, answers: newAnswers } = shuffleVerses(
+              nextVerses,
+              difficulty,
+            );
+            setCurrentChunk(nextIdx);
+            setVerses(shuffled);
+            setAnswers(newAnswers);
+            setSelectedVerse(null);
+            setSlotAnimations({});
+          },
+        });
+      } else {
         Modal.success({
           title: "Congratulations! You have completed this chapter.",
           okText: "Go to the next chapter!",
@@ -116,8 +245,11 @@ function Main() {
             setChapter((prev) => prev - 1);
           },
         });
+      }
     }
-  }, [verses, answers, data]);
+  }, [verses, answers, data, allVerses, currentChunk, chunkOffset, difficulty]);
+
+  const isMultiChapter = chunks.length > 1;
 
   return (
     <div className="w-screen h-screen bg-[#343a40]">
@@ -136,43 +268,70 @@ function Main() {
               <span className="text-sm font-medium">
                 {!loading ? data.translation : "Loading..."}
               </span>
+              {/* Section progress — only shown for long surahs */}
+              {!loading && isMultiChapter && (
+                <span className="mt-1 text-xs font-medium text-gray-400">
+                  Section {currentChunk + 1} of {chunks.length} &mdash; verses{" "}
+                  {chunkOffset + 1}–{chunkOffset + chunks[currentChunk].length}
+                </span>
+              )}
             </div>
           </div>
           {/* Content: Ayah Drop Container */}
           <div className="w-full min-h-min flex flex-col gap-y-3 overflow-y-auto rounded p-4 bg-dark-100 text-white">
-            {/* Basmalah */}
-            <div className="w-full flex place-self-center items-center justify-center pb-3 font-arabic border-b border-gray-300">
-              <Basmalah className="fill-current text-white h-10" />
-            </div>
+            {/* Basmalah — only on first section */}
+            {(!isMultiChapter || currentChunk === 0) && (
+              <div className="w-full flex place-self-center items-center justify-center pb-3 font-arabic border-b border-gray-300">
+                <Basmalah className="fill-current text-white h-10" />
+              </div>
+            )}
             {loading && "Loading..."}
             {!loading &&
               answers.length > 0 &&
               answers.map((answer, idx) => {
+                const isLocked =
+                  answer !== null && answer.id === chunkOffset + idx + 1;
+                const animation = slotAnimations[idx];
                 return (
                   <div
                     key={`answer-slot-${idx}`}
                     onClick={() => storeAnswer(idx, answer, selectedVerse)}
+                    onDragOver={(e) => handleSlotDragOver(e, idx)}
+                    onDragLeave={handleSlotDragLeave}
+                    onDrop={(e) => handleDropOnSlot(e, idx)}
                     className={clsx(
-                      "flex items-center gap-x-4 px-3 py-3 rounded cursor-pointer",
+                      "flex items-center gap-x-4 px-3 py-3 rounded cursor-pointer transition-colors duration-150",
                       answer === null && "bg-[#262b30]",
                       answer !== null &&
-                        answer.id !== idx + 1 &&
+                        answer.id !== chunkOffset + idx + 1 &&
                         difficulty !== "hard" &&
-                        "border-dashed border-2 border-red-400"
+                        "border-dashed border-2 border-red-400",
+                      dragOverSlot === idx &&
+                        "ring-2 ring-white/50 bg-[#2e3540]",
+                      animation === "correct" && "animate-correct",
+                      animation === "wrong" && "animate-wrong",
                     )}
                   >
-                    {/* Numbering */}
+                    {/* Numbering — shows actual verse number */}
                     <div className="rounded-lg font-arabic text-4xl text-center -mt-1">
-                      {new Intl.NumberFormat("ar-EG").format(idx + 1)}
+                      {new Intl.NumberFormat("ar-EG").format(
+                        chunkOffset + idx + 1,
+                      )}
                     </div>
                     {/* Verse Drop */}
-                    {/* On empty answer */}
                     {answer === null && (
                       <div className="flex flex-col min-h-[68px] gap-y-1 w-full"></div>
                     )}
-                    {/* On filled answer */}
                     {answer !== null && (
-                      <div className="flex flex-col gap-y-1 w-full">
+                      <div
+                        draggable={!isLocked}
+                        onDragStart={() => handleDragStart(answer, idx)}
+                        onDragEnd={handleDragEnd}
+                        className={clsx(
+                          "flex flex-col gap-y-1 w-full",
+                          !isLocked && "cursor-grab active:cursor-grabbing",
+                        )}
+                      >
                         <p className="text-right w-full font-arabic text-3xl mt-1">
                           {answer.text}
                         </p>
@@ -194,13 +353,10 @@ function Main() {
                 onClick={() => openDialog("username")}
                 className="flex items-center gap-x-2 cursor-pointer group"
               >
-                {/* Icon */}
                 <div className="flex items-center justify-center h-[20px] w-[20px] rounded-full bg-dark-100">
                   <UserOutlined className="text-white" />
                 </div>
-                {/* Info Text */}
                 <span className="block font-semibold">User: {username}</span>
-                {/* Edit Icon */}
                 <EditOutlined className="invisible group-hover:visible" />
               </div>
               {/* Difficulty */}
@@ -208,24 +364,19 @@ function Main() {
                 onClick={() => openDialog("difficulty")}
                 className="flex items-center gap-x-2 cursor-pointer group"
               >
-                {/* Icon */}
                 <div className="flex items-center justify-center h-[20px] w-[20px] rounded bg-blue-400">
                   <ApartmentOutlined className="text-gray-700" />
                 </div>
-                {/* Info Text */}
                 <span className="block font-semibold">
                   Difficulty: {upperFirst(difficulty)}
                 </span>
-                {/* Edit Icon */}
                 <EditOutlined className="invisible group-hover:visible" />
               </div>
               {/* User Score */}
               <div className="flex items-center gap-x-2">
-                {/* Icon */}
                 <div className="flex items-center justify-center h-[20px] w-[20px] rounded-full bg-yellow-500">
                   <DollarOutlined className="text-yellow-700" />
                 </div>
-                {/* Info Text */}
                 <span className="block font-semibold">Score: {scores} pts</span>
               </div>
             </div>
@@ -233,7 +384,15 @@ function Main() {
             <Badge scores={scores} />
           </div>
           {/* Content: Un-ordered Ayah Drop Container */}
-          <div className="relative w-full min-h-min flex flex-col gap-y-3 overflow-y-auto rounded p-4 bg-dark-100 text-white">
+          <div
+            className={clsx(
+              "relative w-full min-h-min flex flex-col gap-y-3 overflow-y-auto rounded p-4 bg-dark-100 text-white transition-colors duration-150",
+              isDraggingOverPool && "ring-2 ring-white/30",
+            )}
+            onDragOver={handlePoolDragOver}
+            onDragLeave={handlePoolDragLeave}
+            onDrop={handleDropOnPool}
+          >
             {loading && "Loading..."}
             {!loading && verses.length === 0 && "No verses left"}
             {!loading &&
@@ -242,10 +401,13 @@ function Main() {
                 return (
                   <div
                     key={`shuffled-${idx}`}
+                    draggable
                     onClick={() => toggleSelectVerse(verse)}
+                    onDragStart={() => handleDragStart(verse, null)}
+                    onDragEnd={handleDragEnd}
                     className={clsx(
-                      "flex items-center gap-x-4 px-3 py-3 rounded bg-[#262b30] transition-colors duration-100 ease-linear cursor-pointer",
-                      selectedVerse?.id === verse.id && "border-2 border-white"
+                      "flex items-center gap-x-4 px-3 py-3 rounded bg-[#262b30] transition-colors duration-100 ease-linear cursor-grab active:cursor-grabbing",
+                      selectedVerse?.id === verse.id && "border-2 border-white",
                     )}
                   >
                     {/* Ayah Drop */}
